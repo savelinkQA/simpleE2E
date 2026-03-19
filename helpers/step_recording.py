@@ -168,7 +168,7 @@ def save_recorded_feature(context) -> str | None:
 
     lines: list[str] = []
     lines.append("# savetest_status: new")
-    lines.append("# savetest_author: i.kuzin")
+    lines.append("# savetest_author: auto")
     lines.append(f"# savetest_created_at: {datetime.utcnow().strftime('%Y-%m-%d')}")
     lines.append(f"@suite:{uuid.uuid4().hex}")
     lines.append("")

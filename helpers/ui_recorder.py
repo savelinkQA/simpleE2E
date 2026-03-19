@@ -684,7 +684,7 @@ _INSTALLER_JS = r"""
 
     function _uuid() {
       try {
-        if (crypto.randomUUID) return crypto.randomUUID().replace(/-/g,'');
+        if (crypto.randomUUID) return crypto.randomUUID();
         if (crypto.getRandomValues) {
           var a = crypto.getRandomValues(new Uint8Array(16));
           return Array.from(a).map(function(b){return ('0'+b.toString(16)).slice(-2);}).join('');

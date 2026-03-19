@@ -23,7 +23,7 @@ def prepare_text(text):
     :param text: текст для преобразования
     :return text: текст после преобразования
     Преобразует ключевые слова в текст
-    Возможные ключевые слова: random, longName\((\d+)\)
+    Возможные ключевые слова: random, longName\\((\\d+)\\)
     """
     if "random" in text:
         tmp = get_prefics() + str(time.time_ns()) + str(random.randint(10000, 99000))

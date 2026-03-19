@@ -21,7 +21,12 @@ UPDATE
 Селекторы указываются непосредственно в шагах теста 
 (удобно если элементы вашего приложения имеют атрибуты data-test-id)
 
-Подробнее см в статье: https://habr.com/ru/articles/816597/
+<blockquote>
+  <b>Полезные материалы</b><br/>
+  <a href="https://vkvideo.ru/video-225057324_456239017?t=26s">Видео-демонстрация UI-рекордера (VK Video)</a><br/>
+  <a href="https://habr.com/ru/articles/1012180/">Статья на Habr про обновлённый подход</a><br/>
+  <a href="https://habr.com/ru/articles/816597/">Базовая статья с идеей шаблона</a>
+</blockquote>
 ****
 
 ## Пример теста

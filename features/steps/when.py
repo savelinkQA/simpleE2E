@@ -20,6 +20,14 @@ def step_visit_link(context, url):
     page.visit(context.host + url)
 
 
+@when('Я перехожу на страницу "{url}"')
+def step_go_to_page(context, url):
+    if getattr(context, "page", None) is None:
+        context.page = context.playwright_context.new_page()
+    page = ClassAction(context)
+    page.visit(url)
+
+
 @when('Я нажимаю "{name}"/"{selector}"')
 def step_click_button(context, selector, name):
     page = ClassAction(context)

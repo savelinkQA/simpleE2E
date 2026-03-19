@@ -20,8 +20,9 @@ def getData():
             with open(file_path, 'r', encoding='utf-8') as file:
                 file_content = file.read()
 
-                # Ищем все функции, помеченные декораторами @when, @given, @step
-                pattern = r'@(when|Given|then)\(["\'](.*?)["\']\)'
+                # Ищем все функции, помеченные декораторами @when/@given/@then
+                # в любом регистре (when/When, given/Given, then/Then).
+                pattern = r'@(?i:(when|given|then))\(["\'](.*?)["\']\)'
                 matches = re.findall(pattern, file_content)
 
                 item = {"name_file": filename}
@@ -29,6 +30,7 @@ def getData():
                 steps = []
                 for match in matches:
                     step_type, step_text = match
+                    step_type = step_type.lower()
                     is_param = "{" in step_text and "}" in step_text  # Проверяем наличие фигурных скобок
                     tmp = {
                         "type": step_type,

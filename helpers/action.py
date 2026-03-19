@@ -218,3 +218,16 @@ class ClassAction:
         """
         with allure.step(f'drag_and_drop {name}'):
             locator1.drag_to(locator2)
+
+    def upload_file_via_chooser(self, file_path: str, trigger_locator: Locator, name='Загрузка файла'):
+        """
+        Загрузка файла через FileChooser (диалог выбора файла).
+        :param file_path: абсолютный путь к файлу
+        :param trigger_locator: локатор кнопки, открывающей диалог выбора файла
+        :param name: имя элемента для allure
+        """
+        with allure.step(f'{name}: {file_path}'):
+            with self.page.expect_file_chooser() as fc_info:
+                trigger_locator.click()
+            file_chooser = fc_info.value
+            file_chooser.set_files(file_path)

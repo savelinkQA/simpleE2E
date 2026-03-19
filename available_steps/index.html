@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Доступные шаги тестов</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 50%;
+            margin: auto;
+        }
+
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        h2 {
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Доступные шаги тестов</h1>
+    <h1>iframe_extension.py</h2>
+    <table>
+        <tr>
+            <th>Тип шага</th>
+            <th>Текст шага</th>
+            <th>Наличие параметров</th>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я нажимаю "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я навожу "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Клик по координатам ("{x}", "{y}</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я нажимаю дважды "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я нажимаю ПКМ на "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я ввожу "{text}" в "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я очищаю поле "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я ввожу большой текст в "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я нажимаю на текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я навожу на текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я нажимаю дважды на текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я нажимаю ПКМ на текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Я перезагружаю страницу</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>iframe. Скрин</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Вижу "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe in iframe. Вижу "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Жду "{name}"/"{selector}". Жду="{time}" мс</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. НЕ Вижу "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Вижу кнопку "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Вижу в "{name}"/"{selector}" текст ~ "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Вижу в "{name}"/"{selector}" текст = "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Вижу текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. НЕ Вижу текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Вижу в "{name}"/"{selector}" класс "{value}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Скрытый "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Вижу в инпуте "{name}"/"{selector}" текст = "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Вижу в "{name}"/"{selector}" css "{css_style}":"{css_value}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>iframe. Сравнить со скрином "{path_screen}"</td>
+            <td>True</td>
+        </tr>
+    </table>
+    <h1>then.py</h2>
+    <table>
+        <tr>
+            <th>Тип шага</th>
+            <th>Текст шага</th>
+            <th>Наличие параметров</th>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Вижу текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>НЕ Вижу текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Вижу "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Жду "{name}"/"{selector}". Жду="{time}" мс</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Жду исчезновения прелоадера "{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>НЕ Вижу "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Вижу кнопку "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Вижу в "{name}"/"{selector}" текст ~ "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Вижу в "{name}"/"{selector}" текст = "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Вижу в "{name}"/"{selector}" класс "{value}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Скрытый "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Текущий URL ~ "{url}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Текущий URL = "{url}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Вижу прелоадер</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Вижу диалоговое окно</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>НЕ Вижу диалоговое окно</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Вижу аллерт окно</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>НЕ Вижу аллерт окно</td>
+            <td>False</td>
+        </tr>
+    </table>
+    <h1>utils.py</h2>
+    <table>
+        <tr>
+            <th>Тип шага</th>
+            <th>Текст шага</th>
+            <th>Наличие параметров</th>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я чищу куки</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>given</td>
+            <td>Дефект "{short_name}"/"{url}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я перезагружаю страницу</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Пауза "{sec}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Жду исчезновения прелоадера</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Жду исчезновения прелоадера "{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>given</td>
+            <td>Я включаю запись действий в браузере</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я включаю запись действий в браузере</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я скролю до "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я скролю "{count}" раз по "{point}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Скрин</td>
+            <td>False</td>
+        </tr>
+        <tr>
+            <td>then</td>
+            <td>Сравнить со скрином "{path_screen}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я загружаю файл через браузер. Локальный путь="{path_local}", "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+    </table>
+    <h1>preconditional.py</h2>
+    <table>
+        <tr>
+            <th>Тип шага</th>
+            <th>Текст шага</th>
+            <th>Наличие параметров</th>
+        </tr>
+        <tr>
+            <td>given</td>
+            <td>Я открываю сайт "{url}", "{login}"/"{password}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>given</td>
+            <td>Я открываю сайт "{url}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>given</td>
+            <td>Я создаю сущность тест с именем "{entity_name}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>given</td>
+            <td>Я создаю сущность тест</td>
+            <td>False</td>
+        </tr>
+    </table>
+    <h1>when.py</h2>
+    <table>
+        <tr>
+            <th>Тип шага</th>
+            <th>Текст шага</th>
+            <th>Наличие параметров</th>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я перехожу по ссылке = "{url}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я перехожу по ссылке ~ "{url}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я перехожу на страницу "{url}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я нажимаю "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я навожу на "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я нажимаю+ctrl "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я нажимаю "{button}" на клавиатуре</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я нажимаю дважды "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я нажимаю ПКМ на "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я нажимаю на текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я нажимаю дважды на текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я нажимаю ПКМ на текст "{text}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я ввожу "{text}" в "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я тащу "{name}"/"{selector1}" в "{selector2}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Клик по координатам "{x}", "{y}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Кликнуть и тянуть "{x1}", "{y1}" - "{x2}", "{y2}"</td>
+            <td>True</td>
+        </tr>
+        <tr>
+            <td>when</td>
+            <td>Я ввожу большой текст в "{name}"/"{selector}"</td>
+            <td>True</td>
+        </tr>
+    </table>
+</body>
+</html>

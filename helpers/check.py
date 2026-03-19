@@ -222,6 +222,20 @@ class ClassCheck:
             except:
                 return False
 
+    def check_content_input(self, locator: Locator, name='', text: str = '', **kwargs):
+        """
+        Метод проверки значения инпута (value).
+        """
+        with allure.step(f'Проверка текста в инпуте {name}'):
+            expect(locator).to_have_value(text, **kwargs)
+
+    def check_css_style(self, locator: Locator, name='', css_style: str = '', css_value: str = '', **kwargs):
+        """
+        Метод проверки CSS свойства у элемента.
+        """
+        with allure.step(f'Проверка css стиля {name}'):
+            expect(locator).to_have_css(name=css_style, value=css_value, **kwargs)
+
     def check_hidden(self, locator, name):
         """
         Метод проверки видимости элемента

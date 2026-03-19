@@ -5,6 +5,8 @@ import random
 import re
 import json
 
+global_selector_for_iframe = '[data-test-id="extension-adapter-frame"]'
+
 
 def get_prefics():
     return "Autotest"

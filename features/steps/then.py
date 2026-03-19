@@ -110,3 +110,43 @@ def step_check_current_url(context, url):
 def step_check_current_url_full(context, url):
     page = ClassCheck(context)
     page.check_current_url(url)
+
+
+@then('Вижу прелоадер')
+def step_see_preloader(context):
+    page = ClassCheck(context)
+    selector = '[data-test-id="page-loader"]'
+    name = "Прелоадер"
+    page.check_visibility(context.page.locator(selector=selector), name=name)
+
+
+@then('Вижу диалоговое окно')
+def step_open_dialog(context):
+    page = ClassCheck(context)
+    selector = '[role="dialog"]'
+    name = "Диалоговое окно"
+    page.check_visibility(context.page.locator(selector=selector), name=name)
+
+
+@then('НЕ Вижу диалоговое окно')
+def step_close_dialog(context):
+    page = ClassCheck(context)
+    selector = '[role="dialog"]'
+    name = "Диалоговое окно"
+    page.check_not_visibility(context.page.locator(selector=selector), name=name)
+
+
+@then('Вижу аллерт окно')
+def step_open_alert_dialog(context):
+    page = ClassCheck(context)
+    selector = '[role="alertdialog"]'
+    name = "Аллерт окно"
+    page.check_visibility(context.page.locator(selector=selector), name=name)
+
+
+@then('НЕ Вижу аллерт окно')
+def step_close_alert_dialog(context):
+    page = ClassCheck(context)
+    selector = '[role="alertdialog"]'
+    name = "Аллерт окно"
+    page.check_not_visibility(context.page.locator(selector=selector), name=name)

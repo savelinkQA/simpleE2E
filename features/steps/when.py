@@ -1,3 +1,5 @@
+import re
+
 from behave import *
 from helpers.action import ClassAction
 from features.steps.utils import step_screen
@@ -46,6 +48,40 @@ def step_hover_button(context, selector, name):
 def step_click_with_ctrl_button(context, selector, name):
     page = ClassAction(context)
     page.click(context.page.locator(selector=selector), name=str(name), modifiers=["Control"])
+    step_screen(context)
+
+
+@when('Я нажимаю+meta "{name}"/"{selector}"')
+def step_click_with_meta_button(context, selector, name):
+    page = ClassAction(context)
+    page.click(context.page.locator(selector=selector), name=str(name), modifiers=["Meta"])
+    step_screen(context)
+
+
+@when('Я нажимаю+alt "{name}"/"{selector}"')
+def step_click_with_alt_button(context, selector, name):
+    page = ClassAction(context)
+    page.click(context.page.locator(selector=selector), name=str(name), modifiers=["Alt"])
+    step_screen(context)
+
+
+@when('Я нажимаю+shift "{name}"/"{selector}"')
+def step_click_with_shift_button(context, selector, name):
+    page = ClassAction(context)
+    page.click(context.page.locator(selector=selector), name=str(name), modifiers=["Shift"])
+    step_screen(context)
+
+
+@when('Я нажимаю с модификаторами "{modifiers}" на "{name}"/"{selector}"')
+def step_click_with_modifiers_multi(context, modifiers, selector, name):
+    """modifiers: через «+», например Meta+Control+Shift (имена как в Playwright)."""
+    parts = [p.strip() for p in re.split(r"\s*\+\s*", modifiers.strip()) if p.strip()]
+    allowed = {"Control", "Meta", "Alt", "Shift"}
+    mods = [p for p in parts if p in allowed]
+    if not mods:
+        raise ValueError(f"Нет поддерживаемых модификаторов в «{modifiers}», ожидаются: {sorted(allowed)}")
+    page = ClassAction(context)
+    page.click(context.page.locator(selector=selector), name=str(name), modifiers=mods)
     step_screen(context)
 
 

@@ -85,6 +85,7 @@ def enable_ui_recording(context) -> None:
     except Exception:
         pass
 
+    # Загружаем шаги сценария в панель
     try:
         steps = context.__dict__.get("_scenario_steps_index") or []
         feature_name = context.__dict__.get("_record_feature_name") or ""
@@ -153,8 +154,10 @@ def process_screenshot_queue(context) -> None:
     if page is None:
         return
 
+    # Native Save As dialog — пользователь выбирает место сохранения
     path = _ask_save_path(suggested_path)
     if not path:
+        # Отмена — убираем шаг из таймлайна в браузере
         if step_id:
             try:
                 page.evaluate(
@@ -185,14 +188,16 @@ def process_screenshot_queue(context) -> None:
         return
     _show_our_elements(page)
 
+    # Записываем шаг только при успешном сохранении
     from helpers.step_recording import append_ui_step_line, append_recorded_step_line
 
+    # fn для шага: относительный путь от features/screens/
     path_real = os.path.realpath(path)
     screens_real = os.path.realpath(screens_dir)
     if path_real.startswith(screens_real + os.sep) or path_real == screens_real:
         step_fn = os.path.relpath(path, screens_dir)
     else:
-        step_fn = fn
+        step_fn = fn  # baseline.png, т.к. скопируем в suggested_path
     step_line = f'Then Сравнить со скрином "{_escape(step_fn)}"'
 
     if step_id and step_text:
@@ -200,6 +205,7 @@ def process_screenshot_queue(context) -> None:
     else:
         append_recorded_step_line(context, step_line)
 
+    # Добавляем в таймлайн панели (шаг появится только после сохранения)
     try:
         page.evaluate(
             """(a) => { try {
@@ -243,6 +249,7 @@ def process_screenshot_queue(context) -> None:
     except Exception:
         pass
 
+    # Если сохранили вне features/screens/, копируем туда для шага "Сравнить со скрином"
     try:
         path_real = os.path.realpath(path)
         screens_real = os.path.realpath(screens_dir)
@@ -256,6 +263,7 @@ def process_screenshot_queue(context) -> None:
     except Exception:
         pass
 
+    # Finder уже открыт при выборе пути — не открывать повторно
 
 
 def _ask_save_path(suggested_path: str) -> str | None:
@@ -268,6 +276,7 @@ def _ask_save_path(suggested_path: str) -> str | None:
         default_name = (default_name or "baseline") + ".png"
 
     if platform.system() == "Darwin":
+        # macOS: AppleScript — нативный диалог Finder
         safe_name = default_name.replace('\\', '\\\\').replace('"', '\\"')
         script = f'''try
 set theFile to choose file name with prompt "Сохранить эталонный скриншот" default name "{safe_name}"
@@ -318,6 +327,8 @@ def _escape(s: str) -> str:
     return val.replace("\\", "\\\\").replace('"', '\\"')
 
 
+# JS installer — raw string, пишем JS как есть, без двойного экранирования.
+# Все JS-строки используют одинарные кавычки, поэтому r"""...""" безопасен.
 _INSTALLER_JS = r"""
 (() => {
   if (window.___uiRecInstalled) return;
@@ -328,6 +339,8 @@ _INSTALLER_JS = r"""
   const SS_SC      = '___uiRec.sc';    // scenario steps (sessionStorage)
   const SS_META    = '___uiRec.meta';  // feature/scenario names
   const SS_URL     = '___uiRec.url';   // last known URL (navigation detection)
+
+  /* ── sessionStorage: загрузка / сохранение ──────────────────── */
 
   function loadPersistedState() {
     try {
@@ -408,12 +421,86 @@ _INSTALLER_JS = r"""
     try { return CSS.escape(v); } catch(e) { return String(v); }
   }
 
+  function dtiAttrSel(node) {
+    if (!node || !node.getAttribute) return '';
+    var v = node.getAttribute('data-test-id');
+    if (v === null || v === '') return '';
+    return '[data-test-id=' + JSON.stringify(v) + ']';
+  }
+
+  /* Снизу вверх: nodes[0] — ближайший к клику узел с data-test-id, далее родители */
+  function collectDtiNodesInnerToOuter(el) {
+    var out = [];
+    var cur = el;
+    var hops = 0;
+    while (cur && cur.nodeType === 1 && hops < 50) {
+      if (dtiAttrSel(cur)) out.push(cur);
+      if (cur.tagName === 'BODY' || cur.tagName === 'HTML') break;
+      cur = cur.parentElement;
+      hops++;
+    }
+    return out;
+  }
+
+  function relativePathChildCombinator(ancestor, target) {
+    if (!ancestor || !target || ancestor === target) return '';
+    if (!ancestor.contains(target)) return '';
+    var segs = [];
+    var cur = target;
+    while (cur && cur !== ancestor) {
+      var par = cur.parentElement;
+      if (!par) return '';
+      var tag = (cur.tagName || '').toLowerCase();
+      if (!tag) return '';
+      var siblingsSameTag = [];
+      for (var i = 0; i < par.children.length; i++) {
+        var c = par.children[i];
+        if (c.nodeType === 1 && (c.tagName || '').toLowerCase() === tag) siblingsSameTag.push(c);
+      }
+      var idx = siblingsSameTag.indexOf(cur);
+      if (idx < 0) return '';
+      segs.unshift(tag + ':nth-of-type(' + (idx + 1) + ')');
+      cur = par;
+    }
+    return segs.join(' > ');
+  }
+
+  function countMatches(sel) {
+    try {
+      return document.querySelectorAll(sel).length;
+    } catch (e) {
+      return 999;
+    }
+  }
+
   function getBestSel(el) {
     if (!el) return '';
-    var p = el.closest && el.closest('[data-test-id]');
-    if (p) {
-      var v = p.getAttribute('data-test-id');
-      if (v) return '[data-test-id=' + JSON.stringify(v) + ']';
+    var nodes = collectDtiNodesInnerToOuter(el);
+    if (nodes.length > 0) {
+      var built = [];
+      var sel = '';
+      for (var i = 0; i < nodes.length; i++) {
+        built.unshift(dtiAttrSel(nodes[i]));
+        sel = built.join(' ');
+        if (countMatches(sel) === 1) return sel;
+      }
+      var innerDti = nodes[0];
+      if (el !== innerDti && innerDti.contains(el)) {
+        var rel = relativePathChildCombinator(innerDti, el);
+        if (rel) {
+          var sRel = sel + ' > ' + rel;
+          if (countMatches(sRel) === 1) return sRel;
+        }
+      }
+      if (countMatches(sel) > 1 && nodes.length > 0) {
+        var root = nodes[nodes.length - 1];
+        var tight = relativePathChildCombinator(root, el);
+        if (tight) {
+          var sTight = dtiAttrSel(root) + ' > ' + tight;
+          if (countMatches(sTight) === 1) return sTight;
+        }
+      }
+      return sel;
     }
     if (el.id) return '#' + cssEsc(el.id);
     var tag = (el.tagName || '').toLowerCase();
@@ -440,6 +527,95 @@ _INSTALLER_JS = r"""
   function isOurs(el) {
     if (!el || !el.closest) return false;
     return !!(el.closest('#___uiRec_panel') || el.closest('#___uiRec_menu') || el.closest('#___uiRec_modal'));
+  }
+
+  /* ── горячие клавиши → строка для Playwright keyboard.press ───── */
+
+  function isEditableTarget(el) {
+    if (!el || !el.closest) return false;
+    try {
+      if (el.isContentEditable) return true;
+    } catch (e) {}
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'textarea') return true;
+    if (tag === 'input') {
+      var type = (el.getAttribute('type') || 'text').toLowerCase();
+      if (['button', 'submit', 'checkbox', 'radio', 'file', 'hidden', 'reset', 'image'].indexOf(type) >= 0) return false;
+      return true;
+    }
+    if (tag === 'select') return true;
+    return false;
+  }
+
+  function mainKeyForPlaywright(e) {
+    var k = e.key;
+    if (!k || k === 'Unidentified' || k === 'Dead') return null;
+    if (k === ' ') return 'Space';
+    if (e.code && /^Key[A-Z]$/.test(e.code)) return e.code.slice(3).toLowerCase();
+    if (e.code && /^Digit[0-9]$/.test(e.code)) return e.code.slice(5);
+    var codeMap = {
+      'Space': 'Space', 'Minus': '-', 'Equal': '=', 'BracketLeft': '[', 'BracketRight': ']',
+      'Backslash': '\\', 'Semicolon': ';', 'Quote': "'", 'Comma': ',', 'Period': '.', 'Slash': '/',
+      'Backquote': '`', 'IntlBackslash': '\\', 'NumpadDecimal': 'Numpad.', 'NumpadAdd': 'Numpad+',
+      'NumpadSubtract': 'Numpad-', 'NumpadMultiply': 'Numpad*', 'NumpadDivide': 'Numpad/'
+    };
+    if (e.code && codeMap[e.code]) return codeMap[e.code];
+    if (e.code && /^Numpad[0-9]$/.test(e.code)) return e.code;
+    if (e.code === 'NumpadEnter') return 'NumpadEnter';
+    var named = {
+      'Escape': 'Escape', 'Enter': 'Enter', 'Tab': 'Tab', 'Backspace': 'Backspace',
+      'Delete': 'Delete', 'Insert': 'Insert', 'Home': 'Home', 'End': 'End',
+      'PageUp': 'PageUp', 'PageDown': 'PageDown',
+      'ArrowLeft': 'ArrowLeft', 'ArrowRight': 'ArrowRight', 'ArrowUp': 'ArrowUp', 'ArrowDown': 'ArrowDown'
+    };
+    if (named[k]) return named[k];
+    if (/^F([1-9]|1[0-2])$/i.test(k)) return 'F' + String(k).match(/\d+/)[0];
+    if (k.length === 1) return k;
+    return null;
+  }
+
+  function buildPlaywrightShortcut(e) {
+    var k = e.key;
+    if (!k || k === 'Unidentified' || k === 'Dead') return null;
+    if (k === 'Shift' || k === 'Control' || k === 'Alt' || k === 'Meta') return null;
+
+    var ed = isEditableTarget(e.target);
+    var c = e.ctrlKey, m = e.metaKey, a = e.altKey, s = e.shiftKey;
+
+    // Только Shift + печатный символ в поле ввода — обычный ввод, не хоткей (Shift зарезервирован под меню инструмента)
+    if (!c && !m && !a && s) {
+      if (ed && k.length === 1) return null;
+      if (/^F([1-9]|1[0-2])$/i.test(k)) { /* Shift+F* — фиксируем */ }
+      else {
+        var nav = ['Tab', 'Enter', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
+        if (nav.indexOf(k) < 0 && k.length !== 1) return null;
+      }
+    }
+
+    var main = mainKeyForPlaywright(e);
+    if (!main) return null;
+
+    if (!c && !m && !a && !s) {
+      if (/^F([1-9]|1[0-2])$/i.test(k)) return main;
+      return null;
+    }
+
+    if (!c && !m && !a && s) {
+      var partsS = ['Shift', main];
+      return partsS.join('+');
+    }
+
+    if (c || m || a) {
+      var parts = [];
+      if (m) parts.push('Meta');
+      if (c) parts.push('Control');
+      if (a) parts.push('Alt');
+      if (s) parts.push('Shift');
+      parts.push(main);
+      return parts.join('+');
+    }
+
+    return null;
   }
 
   /* ── цвета шагов ─────────────────────────────────────────────── */
@@ -1021,7 +1197,7 @@ _INSTALLER_JS = r"""
     }));
 
     var hint = document.createElement('div');
-    hint.textContent = 'Shift + ПКМ';
+    hint.textContent = 'Shift+ПКМ — меню; обычный ПКМ — в сценарий';
     hint.style.cssText = 'font-size:11px;opacity:0.28;padding:6px 8px 2px;text-align:right;';
     menu.appendChild(hint);
 
@@ -1183,14 +1359,39 @@ _INSTALLER_JS = r"""
 
   buildPanel();
 
-  // Запись кликов
+  function clickModifiersList(e) {
+    var out = [];
+    if (e.metaKey) out.push('Meta');
+    if (e.ctrlKey) out.push('Control');
+    if (e.altKey) out.push('Alt');
+    if (e.shiftKey) out.push('Shift');
+    return out;
+  }
+
+  function gherkinClickStep(nm, sel, mods) {
+    if (!mods || !mods.length)
+      return 'When Я нажимаю "' + esc(nm) + '"/"' + esc(sel) + '"';
+    if (mods.length === 1 && mods[0] === 'Control')
+      return 'When Я нажимаю+ctrl "' + esc(nm) + '"/"' + esc(sel) + '"';
+    if (mods.length === 1 && mods[0] === 'Meta')
+      return 'When Я нажимаю+meta "' + esc(nm) + '"/"' + esc(sel) + '"';
+    if (mods.length === 1 && mods[0] === 'Alt')
+      return 'When Я нажимаю+alt "' + esc(nm) + '"/"' + esc(sel) + '"';
+    if (mods.length === 1 && mods[0] === 'Shift')
+      return 'When Я нажимаю+shift "' + esc(nm) + '"/"' + esc(sel) + '"';
+    var enc = mods.join('+');
+    return 'When Я нажимаю с модификаторами "' + esc(enc) + '" на "' + esc(nm) + '"/"' + esc(sel) + '"';
+  }
+
+  // Запись кликов (в т.ч. с зажатым Ctrl / Meta / Alt / Shift)
   document.addEventListener('click', function(e) {
     if (!window.___uiRecActive) return;
     var el = e.target;
     if (!el || el === document.documentElement || el === document.body) return;
     if (isOurs(el)) return;
     var sel = getBestSel(el), nm = getName(el);
-    var sid = newId(), st = 'When Я нажимаю "' + esc(nm) + '"/"' + esc(sel) + '"';
+    var mods = clickModifiersList(e);
+    var sid = newId(), st = gherkinClickStep(nm, sel, mods);
     send({ type: 'ui_step', step_id: sid, step_text: st });
     timelineAppend(sid, st);
   }, true);
@@ -1213,12 +1414,33 @@ _INSTALLER_JS = r"""
     if (_inputTimers) _inputTimers.set(el, handle);
   }, false);
 
-  // Shift+ПКМ → контекстное меню
+  // ПКМ: Shift+ПКМ → меню инструмента; без Shift → запись шага ПКМ (нативное меню не блокируем)
   document.addEventListener('contextmenu', function(e) {
-    if (!e.shiftKey || !window.___uiRecActive) return;
+    if (!window.___uiRecActive) return;
     if (isOurs(e.target)) return;
-    e.preventDefault(); e.stopPropagation();
-    buildMenu(e.clientX, e.clientY, e.target);
+    if (e.shiftKey) {
+      e.preventDefault(); e.stopPropagation();
+      buildMenu(e.clientX, e.clientY, e.target);
+      return;
+    }
+    var el = e.target;
+    if (!el || el === document.documentElement || el === document.body) return;
+    var sel = getBestSel(el), nm = getName(el);
+    var sid = newId(), st = 'When Я нажимаю ПКМ на "' + esc(nm) + '"/"' + esc(sel) + '"';
+    send({ type: 'ui_step', step_id: sid, step_text: st });
+    timelineAppend(sid, st);
+  }, true);
+
+  // Горячие клавиши (Shift только вместе с Ctrl/Meta/Alt или для навигации — см. buildPlaywrightShortcut)
+  document.addEventListener('keydown', function(e) {
+    if (!window.___uiRecActive) return;
+    if (isOurs(e.target)) return;
+    if (e.repeat) return;
+    var combo = buildPlaywrightShortcut(e);
+    if (!combo) return;
+    var sid = newId(), st = 'When Я нажимаю "' + esc(combo) + '" на клавиатуре';
+    send({ type: 'ui_step', step_id: sid, step_text: st });
+    timelineAppend(sid, st);
   }, true);
 
   /* ── SPA-навигация: перехват history API ─────────────────────── */

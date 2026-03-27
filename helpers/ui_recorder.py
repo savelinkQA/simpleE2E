@@ -102,7 +102,7 @@ def _hide_our_elements(page) -> None:
     try:
         page.evaluate(
             "() => { try { "
-            "['___uiRec_panel','___uiRec_menu','___uiRec_modal'].forEach("
+            "['___uiRec_panel','___uiRec_fab','___uiRec_menu','___uiRec_modal'].forEach("
             "id => { const el = document.getElementById(id); if(el) el.style.setProperty('visibility','hidden','important'); }"
             "); } catch(e){} }"
         )
@@ -114,7 +114,7 @@ def _show_our_elements(page) -> None:
     try:
         page.evaluate(
             "() => { try { "
-            "['___uiRec_panel','___uiRec_menu','___uiRec_modal'].forEach("
+            "['___uiRec_panel','___uiRec_fab','___uiRec_menu','___uiRec_modal'].forEach("
             "id => { const el = document.getElementById(id); if(el) el.style.removeProperty('visibility'); }"
             "); } catch(e){} }"
         )
@@ -334,7 +334,12 @@ _INSTALLER_JS = r"""
   if (window.___uiRecInstalled) return;
   window.___uiRecInstalled = true;
   window.___uiRecActive = true;
+  window.___uiRecPaused = false;
+  try { window.___uiRecPaused = (sessionStorage.getItem('___uiRec.paused') === '1'); } catch(e) {}
+  var DEFAULT_ELEM_NAME = 'Имя элемента';
   const PANEL_KEY  = '___uiRec.v3';
+  const PANEL_COLLAPSE_KEY = '___uiRec.collapsed';
+  const FAB_POS_KEY = '___uiRec.fabPos';
   const SS_TL      = '___uiRec.tl';    // timeline (sessionStorage)
   const SS_SC      = '___uiRec.sc';    // scenario steps (sessionStorage)
   const SS_META    = '___uiRec.meta';  // feature/scenario names
@@ -415,6 +420,26 @@ _INSTALLER_JS = r"""
     var bs = String.fromCharCode(92);
     var dq = String.fromCharCode(34);
     return s.split(bs).join(bs + bs).split(dq).join(bs + dq);
+  }
+
+  /* Селектор в шаге: двойные кавычки как в DOM, без esc() — иначе ломается разбор шага */
+  function selStep(sel) {
+    return String(sel || '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function extractPauseSecondsFromSteps(steps) {
+    if (!Array.isArray(steps)) return null;
+    var re = /Пауза\s+"(\d+)"/;
+    for (var i = 0; i < steps.length; i++) {
+      var s = steps[i];
+      var nm = String(s.name || '').trim();
+      var m = nm.match(re);
+      if (m) return parseInt(m[1], 10);
+      var line = (String(s.keyword || '').trim() + ' ' + nm).trim();
+      m = line.match(re);
+      if (m) return parseInt(m[1], 10);
+    }
+    return null;
   }
 
   function cssEsc(v) {
@@ -510,11 +535,60 @@ _INSTALLER_JS = r"""
     return tag + (cls.length ? '.' + cls.join('.') : '');
   }
 
-  function getName(el) {
+  function getTextFromAriaLabelled(el) {
+    var lab = el.getAttribute && el.getAttribute('aria-labelledby');
+    if (!lab) return '';
+    var ids = lab.split(/\s+/);
+    var parts = [];
+    for (var i = 0; i < ids.length; i++) {
+      var n = document.getElementById(ids[i]);
+      if (n && n.textContent) parts.push(n.textContent);
+    }
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function findPlaceholderFromNearby(el) {
     if (!el) return '';
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') {
+      var ph = el.getAttribute('placeholder');
+      return ph ? String(ph) : '';
+    }
+    if (tag === 'img') return el.getAttribute('alt') || '';
+    try {
+      var q = el.querySelector && el.querySelector('input:not([type=hidden]):not([type="hidden"]), textarea');
+      if (q) { var p1 = q.getAttribute('placeholder'); if (p1) return p1; }
+    } catch(e) {}
+    try {
+      var lbl = el.closest && el.closest('label');
+      if (lbl && lbl.control) {
+        var c = lbl.control;
+        var t = (c.tagName || '').toLowerCase();
+        if ((t === 'input' || t === 'textarea') && c.getAttribute('placeholder'))
+          return c.getAttribute('placeholder') || '';
+      }
+    } catch(e2) {}
+    var p = el.parentElement;
+    for (var h = 0; h < 8 && p; h++) {
+      try {
+        var inp = p.querySelector && p.querySelector('input:not([type=hidden]):not([type="hidden"]), textarea');
+        if (inp) { var ph = inp.getAttribute('placeholder'); if (ph) return ph; }
+      } catch(e3) {}
+      p = p.parentElement;
+    }
+    return '';
+  }
+
+  function getNameRaw(el) {
+    if (!el) return '';
+    var tag = (el.tagName || '').toLowerCase();
     var srcs = [
       el.getAttribute && el.getAttribute('aria-label'),
+      getTextFromAriaLabelled(el),
+      el.getAttribute && el.getAttribute('title'),
+      findPlaceholderFromNearby(el),
       el.getAttribute && el.getAttribute('placeholder'),
+      tag === 'img' ? (el.getAttribute && el.getAttribute('alt')) : '',
       el.innerText || el.textContent || ''
     ];
     for (var i = 0; i < srcs.length; i++) {
@@ -524,9 +598,42 @@ _INSTALLER_JS = r"""
     return '';
   }
 
+  function getName(el) {
+    return getNameRaw(el);
+  }
+
+  function getDisplayName(el) {
+    var n = getNameRaw(el);
+    return n || DEFAULT_ELEM_NAME;
+  }
+
+  function recordingAllowed() {
+    return !!window.___uiRecActive && !window.___uiRecPaused;
+  }
+
+  function needsScrollIntoView(el) {
+    if (!el || !el.getBoundingClientRect) return false;
+    var r = el.getBoundingClientRect();
+    var m = 2;
+    if (r.width < 1 && r.height < 1) return true;
+    return r.top < m || r.left < m || r.bottom > window.innerHeight - m || r.right > window.innerWidth - m;
+  }
+
+  function maybeEmitScrollStep(el) {
+    if (!recordingAllowed() || !el) return;
+    if (!needsScrollIntoView(el)) return;
+    var sel = getBestSel(el);
+    if (!sel) return;
+    var nm = getDisplayName(el);
+    var sid = newId();
+    var st = 'When Я скролю до "' + esc(nm) + '"/"' + selStep(sel) + '"';
+    send({ type: 'ui_step', step_id: sid, step_text: st });
+    timelineAppend(sid, st);
+  }
+
   function isOurs(el) {
     if (!el || !el.closest) return false;
-    return !!(el.closest('#___uiRec_panel') || el.closest('#___uiRec_menu') || el.closest('#___uiRec_modal'));
+    return !!(el.closest('#___uiRec_panel') || el.closest('#___uiRec_fab') || el.closest('#___uiRec_menu') || el.closest('#___uiRec_modal'));
   }
 
   /* ── горячие клавиши → строка для Playwright keyboard.press ───── */
@@ -728,6 +835,41 @@ _INSTALLER_JS = r"""
     } catch(e) {}
   }
 
+  function updateRecordingChrome() {
+    var paused = !!window.___uiRecPaused;
+    var panel = document.getElementById('___uiRec_panel');
+    var fab = document.getElementById('___uiRec_fab');
+    if (panel) panel.setAttribute('data-paused', paused ? '1' : '0');
+    if (fab) fab.setAttribute('data-paused', paused ? '1' : '0');
+    try {
+      document.querySelectorAll('[data-ui-rec-pause-btn]').forEach(function(b) {
+        b.textContent = paused ? '▶' : '⏸';
+        b.title = paused ? 'Продолжить запись' : 'Пауза';
+      });
+    } catch(e) {}
+  }
+
+  function applyCollapseState(collapsed) {
+    window.___uiRecCollapsed = !!collapsed;
+    try { localStorage.setItem(PANEL_COLLAPSE_KEY, collapsed ? '1' : '0'); } catch(e) {}
+    var panel = document.getElementById('___uiRec_panel');
+    var fab = document.getElementById('___uiRec_fab');
+    if (panel) panel.style.display = collapsed ? 'none' : '';
+    if (fab) fab.style.display = collapsed ? 'flex' : 'none';
+  }
+
+  function togglePause(ev) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    window.___uiRecPaused = !window.___uiRecPaused;
+    try { sessionStorage.setItem('___uiRec.paused', window.___uiRecPaused ? '1' : '0'); } catch(e) {}
+    updateRecordingChrome();
+  }
+
+  function sendBaselineScreenshot() {
+    var sid = newId(), fn = 'baseline.png', st = 'Then Сравнить со скрином "' + esc(fn) + '"';
+    send({ type: 'baseline_screenshot', step_id: sid, step_text: st, file_name: fn });
+  }
+
   /* ── панель ───────────────────────────────────────────────────── */
 
   function buildPanel() {
@@ -752,7 +894,8 @@ _INSTALLER_JS = r"""
       'resize:both',
       'font-family:system-ui,-apple-system,Segoe UI,sans-serif',
       'display:flex',
-      'flex-direction:column'
+      'flex-direction:column',
+      'overscroll-behavior:contain'
     ].join(';');
 
     // Блокируем всплытие событий из панели наружу
@@ -770,7 +913,10 @@ _INSTALLER_JS = r"""
     if (!document.getElementById('___uiRec_style')) {
       var st = document.createElement('style');
       st.id = '___uiRec_style';
-      st.textContent = '@keyframes ___uiRecBlink{0%,100%{opacity:1}50%{opacity:0.25}}';
+      st.textContent =
+        '@keyframes ___uiRecBlink{0%,100%{opacity:1}50%{opacity:0.25}}' +
+        '#___uiRec_panel[data-paused="1"] #___uiRec_hdrDot,' +
+        '#___uiRec_fab[data-paused="1"] .___uiRecFabDot{animation:none!important;opacity:.55}';
       (document.head || document.documentElement).appendChild(st);
     }
 
@@ -778,6 +924,7 @@ _INSTALLER_JS = r"""
     hl.style.cssText = 'display:flex;gap:10px;align-items:center;';
 
     var recDot = document.createElement('div');
+    recDot.id = '___uiRec_hdrDot';
     recDot.style.cssText =
       'width:9px;height:9px;border-radius:999px;background:rgba(255,70,70,0.85);' +
       'box-shadow:0 0 0 3px rgba(255,70,70,0.18);animation:___uiRecBlink 1.4s ease-in-out infinite;flex:0 0 auto;';
@@ -796,6 +943,34 @@ _INSTALLER_JS = r"""
     hl.appendChild(recDot);
     hl.appendChild(titleEl);
     hl.appendChild(badge);
+
+    function syncPauseTimerUi() {
+      var old = document.getElementById('___uiRec_timerWrap');
+      if (old) old.remove();
+      var psec = extractPauseSecondsFromSteps(window.___uiRecScenarioSteps || []);
+      if (psec == null) return;
+      var wrap = document.createElement('div');
+      wrap.id = '___uiRec_timerWrap';
+      wrap.title = 'Обратный отсчёт шага Пауза';
+      wrap.style.cssText =
+        'display:none;align-items:center;gap:6px;margin-left:4px;' +
+        'padding:3px 10px;border-radius:10px;border:1px solid rgba(255,200,0,0.35);' +
+        'background:rgba(255,200,0,0.10);flex-shrink:0;';
+      var lab = document.createElement('span');
+      lab.textContent = 'Пауза';
+      lab.style.cssText = 'font-size:11px;opacity:0.75;font-weight:600;letter-spacing:0.3px;';
+      var tim = document.createElement('span');
+      tim.id = '___uiRec_timer';
+      tim.textContent = '00:00';
+      tim.style.cssText =
+        'font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:0.5px;' +
+        'color:rgba(255,230,160,0.98);min-width:52px;text-align:right;';
+      wrap.appendChild(lab);
+      wrap.appendChild(tim);
+      hl.appendChild(wrap);
+    }
+    window.___uiRecSyncPauseTimerUi = syncPauseTimerUi;
+    syncPauseTimerUi();
 
     /* ── утилита копирования (clipboard fallback) ── */
     function _copyFallback(text) {
@@ -911,13 +1086,42 @@ _INSTALLER_JS = r"""
       document.addEventListener('click', closeHandler, true);
     }));
 
+    var pauseBtnP = document.createElement('button');
+    pauseBtnP.type = 'button';
+    pauseBtnP.setAttribute('data-ui-rec-pause-btn', '1');
+    pauseBtnP.title = 'Пауза';
+    pauseBtnP.textContent = '⏸';
+    pauseBtnP.style.cssText =
+      'padding:6px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.16);' +
+      'background:rgba(255,255,255,0.06);color:#fff;cursor:pointer;font-size:14px;font-family:inherit;line-height:1;';
+    pauseBtnP.onmouseenter = function() { pauseBtnP.style.background = 'rgba(255,255,255,0.13)'; };
+    pauseBtnP.onmouseleave = function() { pauseBtnP.style.background = 'rgba(255,255,255,0.06)'; };
+    pauseBtnP.addEventListener('click', togglePause);
+
+    var collapseBtnP = document.createElement('button');
+    collapseBtnP.type = 'button';
+    collapseBtnP.title = 'Свернуть в иконку';
+    collapseBtnP.textContent = '⤡';
+    collapseBtnP.style.cssText = pauseBtnP.style.cssText;
+    collapseBtnP.onmouseenter = function() { collapseBtnP.style.background = 'rgba(255,255,255,0.13)'; };
+    collapseBtnP.onmouseleave = function() { collapseBtnP.style.background = 'rgba(255,255,255,0.06)'; };
+    collapseBtnP.addEventListener('click', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      applyCollapseState(true);
+    });
+
+    hr.appendChild(pauseBtnP);
+    hr.appendChild(collapseBtnP);
+
     hdr.appendChild(hl);
     hdr.appendChild(hr);
 
     /* ── тело ── */
     var body = document.createElement('div');
     body.id = '___uiRec_body';
-    body.style.cssText = 'flex:1;overflow-y:auto;overflow-x:hidden;padding:4px 0;';
+    body.style.cssText =
+      'flex:1 1 0%;min-height:0;max-height:100%;overflow-y:auto;overflow-x:hidden;padding:4px 0;' +
+      'position:relative;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;';
 
     var scenSec = document.createElement('div');
     scenSec.id = '___uiRec_scenSec';
@@ -935,6 +1139,23 @@ _INSTALLER_JS = r"""
     panel.appendChild(hdr);
     panel.appendChild(body);
     document.documentElement.appendChild(panel);
+
+    // Не отменяем wheel целиком (иначе ломается нативный скролл). Только гасим «проброс» на страницу у края.
+    body.addEventListener('wheel', function(e) {
+      var el = this;
+      var dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= 16;
+      if (e.deltaMode === 2) dy *= (window.innerHeight || 600);
+      var max = el.scrollHeight - el.clientHeight;
+      if (max <= 0) {
+        e.preventDefault();
+        return;
+      }
+      var st = el.scrollTop;
+      var atTop = st <= 0;
+      var atBottom = st >= max - 1;
+      if ((dy < 0 && atTop) || (dy > 0 && atBottom)) e.preventDefault();
+    }, { passive: false });
 
     /* ── Восстановление состояния из sessionStorage ── */
 
@@ -1002,6 +1223,7 @@ _INSTALLER_JS = r"""
           row.setAttribute('data-sc-idx', String(s.idx));
           sec.appendChild(row);
         });
+        try { if (window.___uiRecSyncPauseTimerUi) window.___uiRecSyncPauseTimerUi(); } catch(e2) {}
       } catch(e) {}
     };
 
@@ -1078,6 +1300,172 @@ _INSTALLER_JS = r"""
         panel._saveTO = setTimeout(saveState, 300);
       }).observe(panel);
     } catch(e) {}
+
+    window.___uiRecSetPauseCountdown = function(rem) {
+      try {
+        var wrap = document.getElementById('___uiRec_timerWrap');
+        var tim = document.getElementById('___uiRec_timer');
+        if (!wrap || !tim) return;
+        wrap.style.display = 'flex';
+        var r = Math.max(0, parseInt(rem, 10) || 0);
+        var m = Math.floor(r / 60), s = r % 60;
+        tim.textContent = ('0' + m).slice(-2) + ':' + ('0' + s).slice(-2);
+      } catch(e) {}
+    };
+    window.___uiRecClearPauseTimer = function() {
+      try {
+        var wrap = document.getElementById('___uiRec_timerWrap');
+        if (wrap) wrap.style.display = 'none';
+      } catch(e) {}
+    };
+  }
+
+  function buildFab() {
+    if (document.getElementById('___uiRec_fab')) return;
+
+    var fab = document.createElement('div');
+    fab.id = '___uiRec_fab';
+    fab.style.cssText = [
+      'position:fixed', 'right:18px', 'bottom:18px', 'top:auto', 'left:auto',
+      'z-index:2147483647',
+      'display:none',
+      'flex-direction:row',
+      'align-items:center',
+      'gap:8px',
+      'padding:8px 10px',
+      'border-radius:16px',
+      'border:1px solid rgba(255,255,255,0.12)',
+      'background:linear-gradient(160deg,rgba(16,18,24,0.92),rgba(8,10,14,0.78))',
+      'backdrop-filter:blur(18px) saturate(160%)',
+      '-webkit-backdrop-filter:blur(18px) saturate(160%)',
+      'box-shadow:0 10px 32px rgba(0,0,0,0.5)',
+      'font-family:system-ui,-apple-system,Segoe UI,sans-serif',
+      'cursor:grab'
+    ].join(';');
+
+    ['click', 'mousedown', 'pointerdown', 'contextmenu', 'keydown'].forEach(function(ev) {
+      fab.addEventListener(ev, function(e) { e.stopPropagation(); }, false);
+    });
+
+    /* Перетаскивание FAB (не с кнопок) */
+    var fabDrag = null;
+    fab.addEventListener('pointerdown', function(e) {
+      if (e.target.closest && e.target.closest('button')) return;
+      e.preventDefault();
+      var r = fab.getBoundingClientRect();
+      fabDrag = { ox: e.clientX - r.left, oy: e.clientY - r.top };
+      fab.style.right = 'auto';
+      fab.style.bottom = 'auto';
+      fab.style.left = r.left + 'px';
+      fab.style.top = r.top + 'px';
+      fab.style.cursor = 'grabbing';
+      try { fab.setPointerCapture(e.pointerId); } catch(err) {}
+    }, false);
+    document.addEventListener('pointermove', function(e) {
+      if (!fabDrag) return;
+      var w = fab.offsetWidth, h = fab.offsetHeight;
+      var l = Math.max(0, Math.min(e.clientX - fabDrag.ox, window.innerWidth - w));
+      var t = Math.max(0, Math.min(e.clientY - fabDrag.oy, window.innerHeight - h));
+      fab.style.left = l + 'px';
+      fab.style.top = t + 'px';
+    }, false);
+    function endFabDrag() {
+      if (!fabDrag) return;
+      fabDrag = null;
+      fab.style.cursor = 'grab';
+      try {
+        var br = fab.getBoundingClientRect();
+        localStorage.setItem(FAB_POS_KEY, JSON.stringify({ l: br.left, t: br.top }));
+      } catch(err) {}
+    }
+    document.addEventListener('pointerup', endFabDrag, false);
+    fab.addEventListener('pointerup', endFabDrag, false);
+
+    var expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.title = 'Развернуть панель записи';
+    expandBtn.style.cssText =
+      'width:36px;height:36px;border-radius:10px;border:none;background:rgba(255,255,255,0.06);' +
+      'cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0;';
+    expandBtn.onmouseenter = function() { expandBtn.style.background = 'rgba(255,255,255,0.12)'; };
+    expandBtn.onmouseleave = function() { expandBtn.style.background = 'rgba(255,255,255,0.06)'; };
+    var fabDot = document.createElement('div');
+    fabDot.className = '___uiRecFabDot';
+    fabDot.style.cssText =
+      'width:12px;height:12px;border-radius:999px;background:rgba(255,70,70,0.88);' +
+      'box-shadow:0 0 0 3px rgba(255,70,70,0.2);animation:___uiRecBlink 1.4s ease-in-out infinite;';
+    expandBtn.appendChild(fabDot);
+    expandBtn.addEventListener('click', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      applyCollapseState(false);
+    });
+
+    var pauseFab = document.createElement('button');
+    pauseFab.type = 'button';
+    pauseFab.setAttribute('data-ui-rec-pause-btn', '1');
+    pauseFab.title = 'Пауза';
+    pauseFab.textContent = '⏸';
+    pauseFab.style.cssText =
+      'min-width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,0.14);' +
+      'background:rgba(255,255,255,0.06);color:#fff;cursor:pointer;font-size:15px;line-height:1;padding:0 8px;';
+    pauseFab.onmouseenter = function() { pauseFab.style.background = 'rgba(255,255,255,0.12)'; };
+    pauseFab.onmouseleave = function() { pauseFab.style.background = 'rgba(255,255,255,0.06)'; };
+    pauseFab.addEventListener('click', togglePause);
+
+    var photoFab = document.createElement('button');
+    photoFab.type = 'button';
+    photoFab.title = 'Эталонный скрин';
+    photoFab.style.cssText = pauseFab.style.cssText +
+      ';display:inline-flex;align-items:center;justify-content:center;padding:0;width:34px;';
+    var svgCam = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svgCam.setAttribute('width', '18');
+    svgCam.setAttribute('height', '18');
+    svgCam.setAttribute('viewBox', '0 0 24 24');
+    svgCam.setAttribute('fill', 'none');
+    svgCam.style.cssText = 'pointer-events:none;opacity:0.92;';
+    var p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p1.setAttribute('d', 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z');
+    p1.setAttribute('stroke', 'currentColor');
+    p1.setAttribute('stroke-width', '2');
+    p1.setAttribute('stroke-linecap', 'round');
+    p1.setAttribute('stroke-linejoin', 'round');
+    var c1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c1.setAttribute('cx', '12');
+    c1.setAttribute('cy', '13');
+    c1.setAttribute('r', '4');
+    c1.setAttribute('stroke', 'currentColor');
+    c1.setAttribute('stroke-width', '2');
+    svgCam.appendChild(p1);
+    svgCam.appendChild(c1);
+    photoFab.appendChild(svgCam);
+    photoFab.onmouseenter = function() { photoFab.style.background = 'rgba(255,255,255,0.12)'; };
+    photoFab.onmouseleave = function() { photoFab.style.background = 'rgba(255,255,255,0.06)'; };
+    photoFab.addEventListener('click', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      sendBaselineScreenshot();
+    });
+
+    fab.appendChild(expandBtn);
+    fab.appendChild(pauseFab);
+    fab.appendChild(photoFab);
+    document.documentElement.appendChild(fab);
+
+    var startCollapsed = false;
+    try { startCollapsed = localStorage.getItem(PANEL_COLLAPSE_KEY) === '1'; } catch(e) {}
+    applyCollapseState(startCollapsed);
+    updateRecordingChrome();
+    setTimeout(function() {
+      try {
+        var fp = JSON.parse(localStorage.getItem(FAB_POS_KEY) || 'null');
+        if (fp && typeof fp.l === 'number' && typeof fp.t === 'number') {
+          fab.style.right = 'auto';
+          fab.style.bottom = 'auto';
+          var w = fab.offsetWidth || 160, h = fab.offsetHeight || 44;
+          fab.style.left = Math.max(0, Math.min(fp.l, window.innerWidth - w - 4)) + 'px';
+          fab.style.top = Math.max(0, Math.min(fp.t, window.innerHeight - h - 4)) + 'px';
+        }
+      } catch(e) {}
+    }, 0);
   }
 
   /* ── контекстное меню ─────────────────────────────────────────── */
@@ -1090,7 +1478,7 @@ _INSTALLER_JS = r"""
   function buildMenu(x, y, target) {
     removeMenu();
     var sel = getBestSel(target);
-    var nm  = getName(target);
+    var nm  = getDisplayName(target);
 
     var menu = document.createElement('div');
     menu.id = '___uiRec_menu';
@@ -1142,14 +1530,14 @@ _INSTALLER_JS = r"""
 
     // 1. Элемент видим
     menu.appendChild(mBtn('', 'Элемент видим', function() {
-      var sid = newId(), st = 'Then Вижу "' + esc(nm) + '"/"' + esc(sel) + '"';
+      var sid = newId(), st = 'Then Вижу "' + esc(nm) + '"/"' + selStep(sel) + '"';
       send({ type: 'ui_step', step_id: sid, step_text: st });
       timelineAppend(sid, st);
     }));
 
     // 2. Элемент НЕ видим
     menu.appendChild(mBtn('', 'Элемент НЕ видим', function() {
-      var sid = newId(), st = 'Then НЕ Вижу "' + esc(nm) + '"/"' + esc(sel) + '"';
+      var sid = newId(), st = 'Then НЕ Вижу "' + esc(nm) + '"/"' + selStep(sel) + '"';
       send({ type: 'ui_step', step_id: sid, step_text: st });
       timelineAppend(sid, st);
     }));
@@ -1170,7 +1558,7 @@ _INSTALLER_JS = r"""
         onOk: function(v) {
           var sid = newId();
           var op = (v.mode === 'exact') ? '=' : '~';
-          var st = 'Then Вижу в "' + esc(nm) + '"/"' + esc(sel) + '" текст ' + op + ' "' + esc(v.txt || '') + '"';
+          var st = 'Then Вижу в "' + esc(nm) + '"/"' + selStep(sel) + '" текст ' + op + ' "' + esc(v.txt || '') + '"';
           send({ type: 'ui_step', step_id: sid, step_text: st });
           timelineAppend(sid, st);
         }
@@ -1192,8 +1580,7 @@ _INSTALLER_JS = r"""
 
     // 5. Эталонный скрин — только отправляет запрос; шаг добавится после сохранения в Finder
     menu.appendChild(mBtn('', 'Эталонный скрин', function() {
-      var sid = newId(), fn = 'baseline.png', st = 'Then Сравнить со скрином "' + esc(fn) + '"';
-      send({ type: 'baseline_screenshot', step_id: sid, step_text: st, file_name: fn });
+      sendBaselineScreenshot();
     }));
 
     var hint = document.createElement('div');
@@ -1358,6 +1745,7 @@ _INSTALLER_JS = r"""
   /* ── инициализация и листенеры ───────────────────────────────── */
 
   buildPanel();
+  buildFab();
 
   function clickModifiersList(e) {
     var out = [];
@@ -1370,48 +1758,63 @@ _INSTALLER_JS = r"""
 
   function gherkinClickStep(nm, sel, mods) {
     if (!mods || !mods.length)
-      return 'When Я нажимаю "' + esc(nm) + '"/"' + esc(sel) + '"';
+      return 'When Я нажимаю "' + esc(nm) + '"/"' + selStep(sel) + '"';
     if (mods.length === 1 && mods[0] === 'Control')
-      return 'When Я нажимаю+ctrl "' + esc(nm) + '"/"' + esc(sel) + '"';
+      return 'When Я нажимаю+ctrl "' + esc(nm) + '"/"' + selStep(sel) + '"';
     if (mods.length === 1 && mods[0] === 'Meta')
-      return 'When Я нажимаю+meta "' + esc(nm) + '"/"' + esc(sel) + '"';
+      return 'When Я нажимаю+meta "' + esc(nm) + '"/"' + selStep(sel) + '"';
     if (mods.length === 1 && mods[0] === 'Alt')
-      return 'When Я нажимаю+alt "' + esc(nm) + '"/"' + esc(sel) + '"';
+      return 'When Я нажимаю+alt "' + esc(nm) + '"/"' + selStep(sel) + '"';
     if (mods.length === 1 && mods[0] === 'Shift')
-      return 'When Я нажимаю+shift "' + esc(nm) + '"/"' + esc(sel) + '"';
+      return 'When Я нажимаю+shift "' + esc(nm) + '"/"' + selStep(sel) + '"';
     var enc = mods.join('+');
-    return 'When Я нажимаю с модификаторами "' + esc(enc) + '" на "' + esc(nm) + '"/"' + esc(sel) + '"';
+    return 'When Я нажимаю с модификаторами "' + esc(enc) + '" на "' + esc(nm) + '"/"' + selStep(sel) + '"';
+  }
+
+  function isTextInputLike(el) {
+    if (!el) return false;
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'textarea') return true;
+    if (tag === 'select') return true;
+    if (tag !== 'input') return false;
+    var t = (el.getAttribute('type') || 'text').toLowerCase();
+    if (['button', 'submit', 'checkbox', 'radio', 'file', 'hidden', 'reset', 'image', 'range'].indexOf(t) >= 0) return false;
+    return true;
+  }
+
+  function recordInputValueStep(el) {
+    if (!recordingAllowed() || !el || isOurs(el)) return;
+    if (!isTextInputLike(el)) return;
+    maybeEmitScrollStep(el);
+    var sel = getBestSel(el), nm = getDisplayName(el);
+    var val = el.value || '';
+    var sid = newId(), st = 'When Я ввожу "' + esc(val) + '" в "' + esc(nm) + '"/"' + selStep(sel) + '"';
+    send({ type: 'ui_step', step_id: sid, step_text: st });
+    timelineAppend(sid, st);
   }
 
   // Запись кликов (в т.ч. с зажатым Ctrl / Meta / Alt / Shift)
   document.addEventListener('click', function(e) {
-    if (!window.___uiRecActive) return;
+    if (!recordingAllowed()) return;
     var el = e.target;
     if (!el || el === document.documentElement || el === document.body) return;
     if (isOurs(el)) return;
-    var sel = getBestSel(el), nm = getName(el);
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'select' || tag === 'option') return;
+    maybeEmitScrollStep(el);
+    var sel = getBestSel(el), nm = getDisplayName(el);
     var mods = clickModifiersList(e);
     var sid = newId(), st = gherkinClickStep(nm, sel, mods);
     send({ type: 'ui_step', step_id: sid, step_text: st });
     timelineAppend(sid, st);
   }, true);
 
-  // Запись ввода текста (дебаунс 400ms)
-  var _inputTimers = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
-  document.addEventListener('input', function(e) {
-    if (!window.___uiRecActive) return;
+  // Один шаг «ввожу» на поле: событие change (фиксация значения при уходе с поля / выборе в списке)
+  document.addEventListener('change', function(e) {
+    if (!recordingAllowed()) return;
     var el = e.target;
     if (!el || isOurs(el)) return;
-    var tag = (el.tagName || '').toLowerCase();
-    if (tag !== 'input' && tag !== 'textarea') return;
-    if (_inputTimers) clearTimeout(_inputTimers.get(el));
-    var handle = setTimeout(function() {
-      var sel = getBestSel(el), nm = getName(el), val = el.value || '';
-      var sid = newId(), st = 'When Я ввожу "' + esc(val) + '" в "' + esc(nm) + '"/"' + esc(sel) + '"';
-      send({ type: 'ui_step', step_id: sid, step_text: st });
-      timelineAppend(sid, st);
-    }, 400);
-    if (_inputTimers) _inputTimers.set(el, handle);
+    recordInputValueStep(el);
   }, false);
 
   // ПКМ: Shift+ПКМ → меню инструмента; без Shift → запись шага ПКМ (нативное меню не блокируем)
@@ -1423,17 +1826,19 @@ _INSTALLER_JS = r"""
       buildMenu(e.clientX, e.clientY, e.target);
       return;
     }
+    if (!recordingAllowed()) return;
     var el = e.target;
     if (!el || el === document.documentElement || el === document.body) return;
-    var sel = getBestSel(el), nm = getName(el);
-    var sid = newId(), st = 'When Я нажимаю ПКМ на "' + esc(nm) + '"/"' + esc(sel) + '"';
+    maybeEmitScrollStep(el);
+    var sel = getBestSel(el), nm = getDisplayName(el);
+    var sid = newId(), st = 'When Я нажимаю ПКМ на "' + esc(nm) + '"/"' + selStep(sel) + '"';
     send({ type: 'ui_step', step_id: sid, step_text: st });
     timelineAppend(sid, st);
   }, true);
 
   // Горячие клавиши (Shift только вместе с Ctrl/Meta/Alt или для навигации — см. buildPlaywrightShortcut)
   document.addEventListener('keydown', function(e) {
-    if (!window.___uiRecActive) return;
+    if (!recordingAllowed()) return;
     if (isOurs(e.target)) return;
     if (e.repeat) return;
     var combo = buildPlaywrightShortcut(e);
@@ -1452,6 +1857,7 @@ _INSTALLER_JS = r"""
     if (newUrl === _lastNavUrl) return;
     _lastNavUrl = newUrl;
     sessionStorage.setItem(SS_URL, newUrl);
+    if (!recordingAllowed()) return;
     if (!window.___uiRecTrackUrls) return;  // галочка выключена — не записываем
     var sid = newId();
     var st = 'When Я перехожу на страницу "' + esc(newUrl) + '"';
@@ -1477,6 +1883,7 @@ _INSTALLER_JS = r"""
     var _pn = _pendingNavStep;
     _pendingNavStep = null;
     setTimeout(function() {
+      if (!recordingAllowed()) return;
       send({ type: 'ui_step', step_id: _pn.sid, step_text: _pn.st });
       timelineAppend(_pn.sid, _pn.st);
     }, 300);

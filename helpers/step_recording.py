@@ -3,7 +3,7 @@ import re
 import uuid
 from datetime import datetime
 
-_UI_TAG_PREFIX = "# ui:"
+_UI_TAG_PREFIX = "# ui:"  # внутренний маркер для удаления шагов; в файл не пишем
 
 
 def is_record_enabled(context) -> bool:
@@ -33,14 +33,8 @@ def init_recording_for_scenario(context, scenario, feature_relpath: str | None =
     """
     enabled = is_record_enabled(context)
     context.__dict__["_record_steps_enabled"] = enabled
-    if not enabled:
-        return
-    context.__dict__["_record_steps"] = []
-    context.__dict__["_record_feature_relpath"] = feature_relpath
-    context.__dict__["_record_feature_name"] = getattr(scenario.feature, "name", None) or "Recorded feature"
-    context.__dict__["_record_scenario_name"] = scenario.name or "Recorded scenario"
-    context.__dict__["_record_started_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%SZ")
 
+    # Для UI-панели: шаги сценария нужны всегда (не только при RECORD=1)
     try:
         steps = []
         for idx, s in enumerate(getattr(scenario, "steps", []) or []):
@@ -57,6 +51,14 @@ def init_recording_for_scenario(context, scenario, feature_relpath: str | None =
     except Exception:
         context.__dict__["_scenario_steps_index"] = []
         context.__dict__["_scenario_step_line_map"] = {}
+
+    if not enabled:
+        return
+    context.__dict__["_record_steps"] = []
+    context.__dict__["_record_feature_relpath"] = feature_relpath
+    context.__dict__["_record_feature_name"] = getattr(scenario.feature, "name", None) or "Recorded feature"
+    context.__dict__["_record_scenario_name"] = scenario.name or "Recorded scenario"
+    context.__dict__["_record_started_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%SZ")
 
 
 def mark_step_executed(context, step) -> None:
@@ -190,6 +192,7 @@ def save_recorded_feature(context) -> str | None:
                     sid = ""
                 if sid and sid in deleted:
                     continue
+                # Убираем артефакт # ui:id_... из вывода
                 line = s.split(_UI_TAG_PREFIX, 1)[0].rstrip()
                 lines.append(line)
     else:

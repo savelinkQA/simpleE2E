@@ -51,14 +51,29 @@ def step_pause(context, sec):
     deadline = time.time() + int(sec)
     page = getattr(context, "page", None)
     while time.time() < deadline:
-        # evaluate даёт Playwright обработать CDP (binding от "Эталонный скрин")
+        remaining = max(0, int(deadline - time.time()))
+        # evaluate даёт Playwright обработать CDP (binding от "Эталонный скрин") + таймер в панели рекордера
         if page:
             try:
-                page.evaluate("1")
+                page.evaluate(
+                    """(rem) => { try {
+                      if (window.___uiRecSetPauseCountdown) window.___uiRecSetPauseCountdown(rem);
+                    } catch(e) {} }""",
+                    remaining,
+                )
             except Exception:
                 pass
         time.sleep(0.15)
         process_screenshot_queue(context)
+    if page:
+        try:
+            page.evaluate(
+                """() => { try {
+                  if (window.___uiRecClearPauseTimer) window.___uiRecClearPauseTimer();
+                } catch(e) {} }"""
+            )
+        except Exception:
+            pass
     step_screen(context)
 
 

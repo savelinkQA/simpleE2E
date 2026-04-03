@@ -535,66 +535,104 @@ _INSTALLER_JS = r"""
     return tag + (cls.length ? '.' + cls.join('.') : '');
   }
 
+  var NAME_MAX = 72;
+
+  function findLabelByForId(id) {
+    if (!id) return null;
+    try {
+      var all = document.getElementsByTagName('label');
+      for (var i = 0; i < all.length; i++) {
+        if (all[i].htmlFor === id) return all[i];
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function labelElementText(lb) {
+    if (!lb) return '';
+    try {
+      var clone = lb.cloneNode(true);
+      var rm = clone.querySelectorAll('input, textarea, select, button');
+      for (var j = 0; j < rm.length; j++) rm[j].remove();
+      return (clone.innerText || clone.textContent || '').replace(/\s+/g, ' ').trim();
+    } catch (e2) {
+      return (lb.innerText || lb.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+  }
+
+  function getLabelTextForControl(el) {
+    if (!el || el.nodeType !== 1) return '';
+    try {
+      if (el.id) {
+        var lb = findLabelByForId(el.id);
+        var t1 = labelElementText(lb);
+        if (t1 && t1.length <= NAME_MAX) return t1;
+      }
+      var wrap = el.closest && el.closest('label');
+      if (wrap) {
+        var t2 = labelElementText(wrap);
+        if (t2 && t2.length <= NAME_MAX) return t2;
+      }
+    } catch (e) {}
+    return '';
+  }
+
   function getTextFromAriaLabelled(el) {
     var lab = el.getAttribute && el.getAttribute('aria-labelledby');
     if (!lab) return '';
-    var ids = lab.split(/\s+/);
-    var parts = [];
+    var ids = lab.trim().split(/\s+/).filter(Boolean);
+    var best = '';
+    var bestLen = 99999;
     for (var i = 0; i < ids.length; i++) {
       var n = document.getElementById(ids[i]);
-      if (n && n.textContent) parts.push(n.textContent);
+      if (!n || !n.textContent) continue;
+      var t = n.textContent.replace(/\s+/g, ' ').trim();
+      if (!t) continue;
+      if (t.length < bestLen) {
+        best = t;
+        bestLen = t.length;
+      }
     }
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
+    return best.length > NAME_MAX ? best.slice(0, NAME_MAX) : best;
   }
 
-  function findPlaceholderFromNearby(el) {
+  function directPlaceholderOrAlt(el) {
     if (!el) return '';
     var tag = (el.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea') {
-      var ph = el.getAttribute('placeholder');
-      return ph ? String(ph) : '';
-    }
-    if (tag === 'img') return el.getAttribute('alt') || '';
-    try {
-      var q = el.querySelector && el.querySelector('input:not([type=hidden]):not([type="hidden"]), textarea');
-      if (q) { var p1 = q.getAttribute('placeholder'); if (p1) return p1; }
-    } catch(e) {}
-    try {
-      var lbl = el.closest && el.closest('label');
-      if (lbl && lbl.control) {
-        var c = lbl.control;
-        var t = (c.tagName || '').toLowerCase();
-        if ((t === 'input' || t === 'textarea') && c.getAttribute('placeholder'))
-          return c.getAttribute('placeholder') || '';
-      }
-    } catch(e2) {}
-    var p = el.parentElement;
-    for (var h = 0; h < 8 && p; h++) {
-      try {
-        var inp = p.querySelector && p.querySelector('input:not([type=hidden]):not([type="hidden"]), textarea');
-        if (inp) { var ph = inp.getAttribute('placeholder'); if (ph) return ph; }
-      } catch(e3) {}
-      p = p.parentElement;
-    }
+    if (tag === 'input' || tag === 'textarea')
+      return String(el.getAttribute('placeholder') || '').trim();
+    if (tag === 'img') return String(el.getAttribute('alt') || '').trim();
     return '';
+  }
+
+  function isPlausibleInlineName(el, text) {
+    var t = (text || '').replace(/\s+/g, ' ').trim();
+    if (!t || t.length < 1) return false;
+    if (t.length > NAME_MAX) return false;
+    try {
+      var n = el.children ? el.children.length : 0;
+      if (t.length > 40 && n > 3) return false;
+    } catch (e) {}
+    return true;
   }
 
   function getNameRaw(el) {
     if (!el) return '';
-    var tag = (el.tagName || '').toLowerCase();
     var srcs = [
       el.getAttribute && el.getAttribute('aria-label'),
+      getLabelTextForControl(el),
       getTextFromAriaLabelled(el),
       el.getAttribute && el.getAttribute('title'),
-      findPlaceholderFromNearby(el),
-      el.getAttribute && el.getAttribute('placeholder'),
-      tag === 'img' ? (el.getAttribute && el.getAttribute('alt')) : '',
-      el.innerText || el.textContent || ''
+      directPlaceholderOrAlt(el),
+      el.getAttribute && el.getAttribute('placeholder')
     ];
     for (var i = 0; i < srcs.length; i++) {
-      var v = (srcs[i] || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      var v = (srcs[i] || '').replace(/\s+/g, ' ').trim();
+      if (v.length > NAME_MAX) v = v.slice(0, NAME_MAX);
       if (v) return v;
     }
+    var rawTxt = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (isPlausibleInlineName(el, rawTxt)) return rawTxt.slice(0, NAME_MAX);
     return '';
   }
 
